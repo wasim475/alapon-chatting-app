@@ -221,8 +221,14 @@ export const sendMessage = catchAsync(async (req, res, next) => {
 
   if (req.file) {
     const isImage = req.file.mimetype.startsWith("image/");
+    const isAudio = req.file.mimetype.startsWith("audio/");
+
+    if (!isImage && !isAudio) {
+      return next(new AppError("Unsupported media type", 400));
+    }
+
     const folder = isImage ? "alapon/chat-images" : "alapon/chat-audio";
-    const resourceType = isImage ? "image" : "auto";
+    const resourceType = isImage ? "image" : "audio";
     const uploadResult = await uploadBufferToCloudinary(
       req.file.buffer,
       folder,

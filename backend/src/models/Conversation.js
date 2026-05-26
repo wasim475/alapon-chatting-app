@@ -23,7 +23,10 @@ conversationSchema.pre("save", function (next) {
   next();
 });
 
-conversationSchema.index({ participants: 1 });
+conversationSchema.index(
+  { participants: 1 },
+  { unique: true, partialFilterExpression: { participants: { $size: 2 } } },
+);
 conversationSchema.index({ lastMessageAt: -1 });
 
 export default mongoose.model("Conversation", conversationSchema);
