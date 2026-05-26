@@ -11,9 +11,13 @@ export function SocketProvider({ children }) {
   useEffect(() => {
     if (!user?._id) return undefined;
 
-    const nextSocket = io(import.meta.env.VITE_SOCKET_URL || "https://alapon-chatting-app.onrender.com", {
-      withCredentials: true,
-    });
+    const nextSocket = io(
+      import.meta.env.VITE_SOCKET_URL ||
+        "https://alapon-chatting-app.onrender.com",
+      {
+        withCredentials: true,
+      },
+    );
 
     const joinUser = () => {
       nextSocket.emit("user:join", user._id);
@@ -41,7 +45,9 @@ export function SocketProvider({ children }) {
   }, [user?._id]);
 
   const value = useMemo(() => ({ socket }), [socket]);
-  return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
+  return (
+    <SocketContext.Provider value={value}>{children}</SocketContext.Provider>
+  );
 }
 
 export const useSocket = () => useContext(SocketContext);
