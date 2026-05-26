@@ -13,13 +13,20 @@ const server = http.createServer(app);
 const normalizeOrigin = (value) =>
   typeof value === "string" ? value.replace(/\/+$/, "") : value;
 
-const clientOrigin = normalizeOrigin(process.env.CLIENT_URL);
+const allowedOrigins = [
+  ...(process.env.CLIENT_URL || "")
+    .split(",")
+    .map(normalizeOrigin)
+    .filter(Boolean),
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
 
 const io = new Server(server, {
   cors: {
-    origin: clientOrigin,
-    credentials: true
-  }
+    origin: allowedOrigins,
+    credentials: true,
+  },
 });
 
 app.set("io", io);

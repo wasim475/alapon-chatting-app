@@ -23,14 +23,21 @@ const app = express();
 const normalizeOrigin = (value) =>
   typeof value === "string" ? value.replace(/\/+$/, "") : value;
 
-const clientOrigin = normalizeOrigin(process.env.CLIENT_URL);
+const allowedOrigins = [
+  ...(process.env.CLIENT_URL || "")
+    .split(",")
+    .map(normalizeOrigin)
+    .filter(Boolean),
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
 
 app.use(helmet());
 app.use(
   cors({
-    origin: clientOrigin,
-    credentials: true
-  })
+    origin: allowedOrigins,
+    credentials: true,
+  }),
 );
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));

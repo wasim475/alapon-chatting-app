@@ -11,7 +11,7 @@ export function SocketProvider({ children }) {
   useEffect(() => {
     if (!user?._id) return undefined;
 
-    const nextSocket = io(import.meta.env.VITE_SOCKET_URL || "http://localhost:5000", {
+    const nextSocket = io(import.meta.env.VITE_SOCKET_URL || "https://alapon-chatting-app.onrender.com", {
       withCredentials: true
     });
 
