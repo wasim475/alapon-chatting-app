@@ -9,6 +9,15 @@ import { getSocketId } from "../socket/index.js";
 const normalizeParticipantIds = (ids) =>
   ids.map((id) => String(id)).sort();
 
+const isUserBlocking = (user, otherId) =>
+  Array.isArray(user.blockedUsers) &&
+  user.blockedUsers.some((blockedId) => String(blockedId) === String(otherId));
+
+const getOtherParticipantId = (conversation, userId) =>
+  conversation.participants.find(
+    (participant) => String(participant._id || participant) !== String(userId),
+  )?._id || null;
+
 const mergeDuplicateConversations = async (conversations) => {
   const sorted = conversations.sort((a, b) =>
     new Date(b.lastMessageAt || b.createdAt) -
@@ -79,10 +88,21 @@ const mergeDuplicateConversationGroups = async (userId, conversations) => {
 
 export const getOrCreateConversation = catchAsync(async (req, res, next) => {
   const friendId = req.params.userId;
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user._id).select("friends blockedUsers");
 
   if (!user.friends.some((id) => String(id) === friendId)) {
     return next(new AppError("You can only chat with friends", 403));
+  }
+
+  if (isUserBlocking(user, friendId)) {
+    return next(new AppError("You cannot chat with a user you have blocked", 403));
+  }
+
+  const friend = await User.findById(friendId).select("blockedUsers");
+  if (!friend) return next(new AppError("User not found", 404));
+
+  if (isUserBlocking(friend, req.user._id)) {
+    return next(new AppError("This user has blocked you", 403));
   }
 
   let conversation = await findConversationForUsers(req.user._id, friendId);
@@ -110,10 +130,21 @@ export const getOrCreateConversation = catchAsync(async (req, res, next) => {
 });
 
 export const listConversations = catchAsync(async (req, res) => {
+  const currentUser = await User.findById(req.user._id).select("blockedUsers");
   let conversations = await Conversation.find({ participants: req.user._id })
-    .populate("participants", "name profile.avatar lastSeenAt")
+    .populate("participants", "name profile.avatar lastSeenAt blockedUsers")
     .populate("lastMessage")
     .sort({ lastMessageAt: -1 });
+
+  conversations = conversations.filter((conversation) => {
+    const otherParticipant = conversation.participants.find(
+      (participant) => String(participant._id) !== String(req.user._id),
+    );
+    if (!otherParticipant) return true;
+    if (isUserBlocking(currentUser, otherParticipant._id)) return false;
+    if (isUserBlocking(otherParticipant, req.user._id)) return false;
+    return true;
+  });
 
   const duplicateGroups = new Map();
 
@@ -164,7 +195,28 @@ export const listConversations = catchAsync(async (req, res) => {
   res.json({ status: "success", conversations: conversationsWithUnread });
 });
 
-export const listMessages = catchAsync(async (req, res) => {
+export const listMessages = catchAsync(async (req, res, next) => {
+  const conversation = await Conversation.findOne({
+    _id: req.params.conversationId,
+    participants: req.user._id,
+  }).populate("participants", "blockedUsers");
+
+  if (!conversation) return next(new AppError("Conversation not found", 404));
+
+  const otherParticipantId = getOtherParticipantId(conversation, req.user._id);
+  if (!otherParticipantId) return next(new AppError("Invalid conversation participants", 400));
+
+  if (isUserBlocking(req.user, otherParticipantId)) {
+    return next(new AppError("You cannot view messages for a blocked conversation", 403));
+  }
+
+  const otherParticipant = conversation.participants.find(
+    (participant) => String(participant._id) === String(otherParticipantId),
+  );
+  if (otherParticipant && isUserBlocking(otherParticipant, req.user._id)) {
+    return next(new AppError("You cannot view messages for a blocked conversation", 403));
+  }
+
   const messages = await Message.find({
     conversation: req.params.conversationId,
   })
@@ -179,9 +231,25 @@ export const markConversationRead = catchAsync(async (req, res, next) => {
   const conversation = await Conversation.findOne({
     _id: req.params.conversationId,
     participants: req.user._id,
-  });
+  }).populate("participants", "blockedUsers");
 
   if (!conversation) return next(new AppError("Conversation not found", 404));
+
+  const otherParticipantId = getOtherParticipantId(conversation, req.user._id);
+  if (!otherParticipantId) {
+    return next(new AppError("Invalid conversation participants", 400));
+  }
+
+  if (isUserBlocking(req.user, otherParticipantId)) {
+    return next(new AppError("You cannot mark a blocked conversation as read", 403));
+  }
+
+  const otherParticipant = conversation.participants.find(
+    (participant) => String(participant._id) === String(otherParticipantId),
+  );
+  if (otherParticipant && isUserBlocking(otherParticipant, req.user._id)) {
+    return next(new AppError("You cannot mark a blocked conversation as read", 403));
+  }
 
   await Message.updateMany(
     {
@@ -196,13 +264,19 @@ export const markConversationRead = catchAsync(async (req, res, next) => {
     },
   );
 
-  req.app
-    .get("io")
-    .to(String(conversation._id))
-    .emit("message:read", {
+  const otherParticipantId = getOtherParticipantId(conversation, req.user._id);
+  const io = req.app.get("io");
+  io.to(String(conversation._id)).emit("message:read", {
+    conversationId: String(conversation._id),
+    userId: String(req.user._id),
+  });
+
+  if (otherParticipantId) {
+    io.to(String(otherParticipantId)).emit("message:read", {
       conversationId: String(conversation._id),
       userId: String(req.user._id),
     });
+  }
 
   res.json({ status: "success" });
 });
@@ -211,9 +285,25 @@ export const sendMessage = catchAsync(async (req, res, next) => {
   const conversation = await Conversation.findOne({
     _id: req.params.conversationId,
     participants: req.user._id,
-  });
+  }).populate("participants", "blockedUsers");
 
   if (!conversation) return next(new AppError("Conversation not found", 404));
+
+  const otherParticipantId = getOtherParticipantId(conversation, req.user._id);
+  if (!otherParticipantId) {
+    return next(new AppError("Invalid conversation participants", 400));
+  }
+
+  if (isUserBlocking(req.user, otherParticipantId)) {
+    return next(new AppError("You cannot send messages to a blocked user", 403));
+  }
+
+  const otherParticipant = conversation.participants.find(
+    (participant) => String(participant._id) === String(otherParticipantId),
+  );
+  if (otherParticipant && isUserBlocking(otherParticipant, req.user._id)) {
+    return next(new AppError("This user has blocked you", 403));
+  }
 
   const text = String(req.body.text || "").trim();
   let image = null;

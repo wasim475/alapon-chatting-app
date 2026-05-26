@@ -19,7 +19,7 @@ export const sendRequest = catchAsync(async (req, res, next) => {
     return next(new AppError("You cannot send a request to yourself", 400));
   }
 
-  const receiver = await User.findById(receiverId).select("_id");
+  const receiver = await User.findById(receiverId).select("_id blockedUsers");
   if (!receiver) return next(new AppError("User not found", 404));
 
   if (
@@ -27,6 +27,20 @@ export const sendRequest = catchAsync(async (req, res, next) => {
     req.user.friends.some((id) => String(id) === receiverId)
   ) {
     return next(new AppError("You are already friends", 400));
+  }
+
+  if (
+    Array.isArray(req.user.blockedUsers) &&
+    req.user.blockedUsers.some((id) => String(id) === receiverId)
+  ) {
+    return next(new AppError("You have blocked this user", 403));
+  }
+
+  if (
+    Array.isArray(receiver.blockedUsers) &&
+    receiver.blockedUsers.some((id) => String(id) === String(req.user._id))
+  ) {
+    return next(new AppError("You cannot send a request to this user", 403));
   }
 
   const existingRequest = await FriendRequest.findOne({
@@ -221,6 +235,60 @@ export const removeFriend = catchAsync(async (req, res) => {
       },
     },
   ]);
+
+  res.json({ status: "success" });
+});
+
+export const blockUser = catchAsync(async (req, res, next) => {
+  const userId = req.params.userId;
+
+  if (!mongoose.isValidObjectId(userId)) {
+    return next(new AppError("Invalid user id", 400));
+  }
+
+  if (userId === String(req.user._id)) {
+    return next(new AppError("You cannot block yourself", 400));
+  }
+
+  await User.bulkWrite([
+    {
+      updateOne: {
+        filter: { _id: req.user._id },
+        update: {
+          $addToSet: { blockedUsers: userId },
+          $pull: { friends: userId },
+        },
+      },
+    },
+    {
+      updateOne: {
+        filter: { _id: userId },
+        update: { $pull: { friends: req.user._id } },
+      },
+    },
+  ]);
+
+  await FriendRequest.deleteMany({
+    $or: [
+      { sender: req.user._id, receiver: userId },
+      { sender: userId, receiver: req.user._id },
+    ],
+  });
+
+  res.json({ status: "success" });
+});
+
+export const unblockUser = catchAsync(async (req, res, next) => {
+  const userId = req.params.userId;
+
+  if (!mongoose.isValidObjectId(userId)) {
+    return next(new AppError("Invalid user id", 400));
+  }
+
+  await User.updateOne(
+    { _id: req.user._id },
+    { $pull: { blockedUsers: userId } },
+  );
 
   res.json({ status: "success" });
 });

@@ -233,6 +233,17 @@ export default function MessagesPage() {
     );
   };
 
+  const getSeenLabel = (message) => {
+    const otherUser = otherParticipant(active);
+    if (!otherUser || !Array.isArray(message.seenBy)) return null;
+    const seenEntry = message.seenBy.find(
+      (entry) => String(entry.user) === String(otherUser._id),
+    );
+    if (!seenEntry) return null;
+    const seenAt = seenEntry.seenAt ? new Date(seenEntry.seenAt).toLocaleTimeString() : null;
+    return seenAt ? `Seen ${seenAt}` : "Seen";
+  };
+
   const markConversationRead = async (conversationId) => {
     if (!conversationId) return;
     try {
@@ -591,7 +602,32 @@ export default function MessagesPage() {
       endCall(false);
     };
 
+    const handleMessageRead = ({ conversationId, userId }) => {
+      if (!activeRef.current || String(activeRef.current._id) !== String(conversationId)) {
+        return;
+      }
+      setMessages((current) =>
+        current.map((message) => {
+          const isMine = String(message.sender?._id || message.sender) === String(user._id);
+          if (!isMine) return message;
+          const hasSeen = Array.isArray(message.seenBy)
+            ? message.seenBy.some((entry) => String(entry.user) === String(userId))
+            : false;
+
+          if (hasSeen) return message;
+          return {
+            ...message,
+            seenBy: [
+              ...(message.seenBy || []),
+              { user: userId, seenAt: new Date().toISOString() },
+            ],
+          };
+        }),
+      );
+    };
+
     socket.on("message:new", handleMessage);
+    socket.on("message:read", handleMessageRead);
     socket.on("typing:start", handleTypingStart);
     socket.on("typing:stop", handleTypingStop);
     socket.on("call:incoming", handleCallIncoming);
@@ -602,6 +638,7 @@ export default function MessagesPage() {
 
     return () => {
       socket.off("message:new", handleMessage);
+      socket.off("message:read", handleMessageRead);
       socket.off("typing:start", handleTypingStart);
       socket.off("typing:stop", handleTypingStop);
       socket.off("call:incoming", handleCallIncoming);
@@ -793,6 +830,11 @@ export default function MessagesPage() {
                             src={message.audio.url}
                             className="w-full"
                           />
+                        )}
+                        {mine && getSeenLabel(message) && (
+                          <p className="mt-2 text-right text-[11px] text-slate-400 dark:text-slate-500">
+                            {getSeenLabel(message)}
+                          </p>
                         )}
                       </div>
                     </div>

@@ -2,15 +2,16 @@ import { MessageCircle, Users } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Avatar from "../components/ui/Avatar.jsx";
-import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../lib/api.js";
 
 export default function FriendsPage() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [friends, setFriends] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [actioningId, setActioningId] = useState(null);
+  const [actionError, setActionError] = useState(null);
+  const [actionSuccess, setActionSuccess] = useState(null);
 
   useEffect(() => {
     api
@@ -26,6 +27,38 @@ export default function FriendsPage() {
       });
   }, []);
 
+  const removeFriend = async (id) => {
+    setActionError(null);
+    setActionSuccess(null);
+    setActioningId(id);
+
+    try {
+      await api.delete(`/friends/${id}`);
+      setFriends((current) => current.filter((friend) => friend._id !== id));
+      setActionSuccess("Friend removed.");
+    } catch (err) {
+      setActionError(err?.response?.data?.message || "Unable to remove friend.");
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const blockUser = async (id) => {
+    setActionError(null);
+    setActionSuccess(null);
+    setActioningId(id);
+
+    try {
+      await api.post(`/friends/block/${id}`);
+      setFriends((current) => current.filter((friend) => friend._id !== id));
+      setActionSuccess("User blocked and removed from friends.");
+    } catch (err) {
+      setActionError(err?.response?.data?.message || "Unable to block user.");
+    } finally {
+      setActioningId(null);
+    }
+  };
+
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 px-4 sm:px-0">
       <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -39,6 +72,17 @@ export default function FriendsPage() {
           </div>
         </div>
       </div>
+
+      {actionError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">
+          {actionError}
+        </div>
+      )}
+      {actionSuccess && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
+          {actionSuccess}
+        </div>
+      )}
 
       {loading ? (
         <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-slate-500 dark:border-slate-800 dark:bg-slate-900">
@@ -81,6 +125,22 @@ export default function FriendsPage() {
                   className="inline-flex items-center gap-2 rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
                 >
                   <MessageCircle size={16} /> Message
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeFriend(friend._id)}
+                  disabled={actioningId === friend._id}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Unfriend
+                </button>
+                <button
+                  type="button"
+                  onClick={() => blockUser(friend._id)}
+                  disabled={actioningId === friend._id}
+                  className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200 dark:hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Block
                 </button>
               </div>
             </div>

@@ -38,6 +38,7 @@ const userSchema = new mongoose.Schema(
     },
     profile: { type: profileSchema, default: () => ({}) },
     friends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     role: { type: String, enum: ["user", "admin"], default: "user" },
     isVerified: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },

@@ -1,11 +1,13 @@
 import express from "express";
 import {
+  blockUser,
   listFriends,
   listRequests,
   listSentRequests,
   removeFriend,
   respondRequest,
   sendRequest,
+  unblockUser,
 } from "../controllers/friendController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
@@ -17,6 +19,8 @@ router.get("/requests/sent", listSentRequests);
 router.get("/list", listFriends);
 router.post("/request/:userId", sendRequest);
 router.patch("/request/:requestId", respondRequest);
+router.post("/block/:userId", blockUser);
+router.delete("/block/:userId", unblockUser);
 router.delete("/:userId", removeFriend);
 
 export default router;
