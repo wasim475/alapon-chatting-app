@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Comment from "../models/Comment.js";
 import Notification from "../models/Notification.js";
 import Post from "../models/Post.js";
@@ -74,10 +75,23 @@ export const addComment = catchAsync(async (req, res, next) => {
   const post = await Post.findById(req.params.postId);
   if (!post) return next(new AppError("Post not found", 404));
 
+  const parentCommentId = req.body.parentCommentId || null;
+  if (parentCommentId && !mongoose.isValidObjectId(parentCommentId)) {
+    return next(new AppError("Invalid parent comment", 400));
+  }
+
+  if (parentCommentId) {
+    const parentComment = await Comment.findById(parentCommentId);
+    if (!parentComment || String(parentComment.post) !== String(post._id)) {
+      return next(new AppError("Parent comment not found", 404));
+    }
+  }
+
   const comment = await Comment.create({
     post: post._id,
     author: req.user._id,
-    text: req.body.text
+    text: req.body.text,
+    parentComment: parentCommentId,
   });
 
   await Post.findByIdAndUpdate(post._id, { $inc: { commentCount: 1 } });
@@ -90,9 +104,14 @@ export const addComment = catchAsync(async (req, res, next) => {
       type: "comment",
       entityType: "Comment",
       entity: comment._id,
-      text: `${req.user.name} commented on your post`
+      text: `${req.user.name} commented on your post`,
     });
   }
+
+  req.app.get("io")?.emit("comment:new", {
+    postId: String(post._id),
+    comment,
+  });
 
   res.status(201).json({ status: "success", comment });
 });
@@ -102,7 +121,56 @@ export const getComments = catchAsync(async (req, res) => {
     .populate("author", "name profile.avatar")
     .sort({ createdAt: 1 });
 
-  res.json({ status: "success", comments });
+  const tree = [];
+  const map = new Map();
+
+  comments.forEach((comment) => {
+    const commentObj = { ...comment.toObject(), replies: [] };
+    map.set(String(comment._id), commentObj);
+  });
+
+  comments.forEach((comment) => {
+    const commentObj = map.get(String(comment._id));
+    if (comment.parentComment) {
+      const parent = map.get(String(comment.parentComment));
+      if (parent) {
+        parent.replies.push(commentObj);
+        return;
+      }
+    }
+    tree.push(commentObj);
+  });
+
+  res.json({ status: "success", comments: tree });
+});
+
+const collectCommentDescendants = async (rootId) => {
+  const ids = [rootId];
+  for (let i = 0; i < ids.length; i += 1) {
+    const children = await Comment.find({ parentComment: ids[i] }).select("_id").lean();
+    children.forEach((child) => ids.push(child._id));
+  }
+  return ids;
+};
+
+export const deleteComment = catchAsync(async (req, res, next) => {
+  const comment = await Comment.findById(req.params.commentId);
+  if (!comment) return next(new AppError("Comment not found", 404));
+  if (String(comment.author) !== String(req.user._id)) {
+    return next(new AppError("Not authorized to delete this comment", 403));
+  }
+
+  const idsToDelete = await collectCommentDescendants(comment._id);
+  await Comment.deleteMany({ _id: { $in: idsToDelete } });
+  await Post.findByIdAndUpdate(comment.post, { $inc: { commentCount: -idsToDelete.length } });
+
+  req.app.get("io")?.emit("comment:deleted", {
+    postId: String(comment.post),
+    commentId: String(comment._id),
+    deletedIds: idsToDelete.map((id) => String(id)),
+  });
+
+  res.json({ status: "success", deletedIds: idsToDelete.map((id) => String(id)) });
 });
 
 export const updatePost = catchAsync(async (req, res, next) => {

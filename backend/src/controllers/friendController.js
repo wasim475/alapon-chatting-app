@@ -167,6 +167,32 @@ export const listSentRequests = catchAsync(async (req, res) => {
   res.json({ status: "success", requests });
 });
 
+export const cancelRequest = catchAsync(async (req, res, next) => {
+  const receiverId = req.params.userId;
+  if (!mongoose.isValidObjectId(receiverId)) {
+    return next(new AppError("Invalid user id", 400));
+  }
+
+  const request = await FriendRequest.findOneAndDelete({
+    sender: req.user._id,
+    receiver: receiverId,
+    status: "pending",
+  });
+
+  if (!request) {
+    return next(new AppError("Pending friend request not found", 404));
+  }
+
+  req.app
+    .get("io")
+    .to(receiverId)
+    .emit("friend_request:cancelled", {
+      senderId: String(req.user._id),
+    });
+
+  res.json({ status: "success" });
+});
+
 export const listFriends = catchAsync(async (req, res) => {
   const userFriends = Array.isArray(req.user.friends) ? req.user.friends : [];
   const onlineUsers = getOnlineUsers();

@@ -227,6 +227,21 @@ export const listMessages = catchAsync(async (req, res, next) => {
   res.json({ status: "success", messages });
 });
 
+const updateConversationLastMessage = async (conversation) => {
+  const lastMessage = await Message.findOne({ conversation: conversation._id })
+    .sort({ createdAt: -1 })
+    .select("_id createdAt");
+
+  if (lastMessage) {
+    conversation.lastMessage = lastMessage._id;
+    conversation.lastMessageAt = lastMessage.createdAt;
+  } else {
+    conversation.lastMessage = null;
+    conversation.lastMessageAt = conversation.createdAt || new Date();
+  }
+  await conversation.save();
+};
+
 export const markConversationRead = catchAsync(async (req, res, next) => {
   const conversation = await Conversation.findOne({
     _id: req.params.conversationId,
@@ -264,7 +279,6 @@ export const markConversationRead = catchAsync(async (req, res, next) => {
     },
   );
 
-  const otherParticipantId = getOtherParticipantId(conversation, req.user._id);
   const io = req.app.get("io");
   io.to(String(conversation._id)).emit("message:read", {
     conversationId: String(conversation._id),
@@ -279,6 +293,107 @@ export const markConversationRead = catchAsync(async (req, res, next) => {
   }
 
   res.json({ status: "success" });
+});
+
+export const editMessage = catchAsync(async (req, res, next) => {
+  const { text } = req.body;
+  const conversation = await Conversation.findOne({
+    _id: req.params.conversationId,
+    participants: req.user._id,
+  });
+
+  if (!conversation) return next(new AppError("Conversation not found", 404));
+  const message = await Message.findOne({
+    _id: req.params.messageId,
+    conversation: conversation._id,
+    sender: req.user._id,
+    isUnsent: false,
+  });
+
+  if (!message) {
+    return next(new AppError("Message not found or not editable", 404));
+  }
+
+  const trimmedText = String(text || "").trim();
+  if (!trimmedText) {
+    return next(new AppError("Message text cannot be empty", 400));
+  }
+
+  message.text = trimmedText;
+  message.isEdited = true;
+  message.editedAt = new Date();
+  await message.save();
+  await message.populate("sender", "name profile.avatar");
+
+  const io = req.app.get("io");
+  io.to(String(conversation._id)).emit("message:edited", message);
+
+  res.json({ status: "success", message });
+});
+
+export const deleteMessage = catchAsync(async (req, res, next) => {
+  const conversation = await Conversation.findOne({
+    _id: req.params.conversationId,
+    participants: req.user._id,
+  });
+
+  if (!conversation) return next(new AppError("Conversation not found", 404));
+
+  const message = await Message.findOneAndDelete({
+    _id: req.params.messageId,
+    conversation: conversation._id,
+    sender: req.user._id,
+  });
+
+  if (!message) {
+    return next(new AppError("Message not found or not deletable", 404));
+  }
+
+  if (String(conversation.lastMessage) === String(message._id)) {
+    await updateConversationLastMessage(conversation);
+  }
+
+  const io = req.app.get("io");
+  io.to(String(conversation._id)).emit("message:deleted", {
+    conversationId: String(conversation._id),
+    messageId: String(message._id),
+  });
+
+  res.json({ status: "success" });
+});
+
+export const unsendMessage = catchAsync(async (req, res, next) => {
+  const conversation = await Conversation.findOne({
+    _id: req.params.conversationId,
+    participants: req.user._id,
+  });
+
+  if (!conversation) return next(new AppError("Conversation not found", 404));
+
+  const message = await Message.findOne({
+    _id: req.params.messageId,
+    conversation: conversation._id,
+    sender: req.user._id,
+    isUnsent: false,
+  });
+
+  if (!message) {
+    return next(new AppError("Message not found or already unsent", 404));
+  }
+
+  message.text = "This message was unsent";
+  message.image = null;
+  message.audio = null;
+  message.isUnsent = true;
+  message.isEdited = false;
+  message.editedAt = new Date();
+  await message.save();
+  await message.populate("sender", "name profile.avatar");
+
+  const io = req.app.get("io");
+  io.to(String(conversation._id)).emit("message:unsent", message);
+
+  res.json({ status: "success", message });
 });
 
 export const sendMessage = catchAsync(async (req, res, next) => {

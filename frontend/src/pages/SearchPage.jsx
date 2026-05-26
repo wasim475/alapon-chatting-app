@@ -6,6 +6,7 @@ import { api } from "../lib/api.js";
 export default function SearchPage() {
   const [q, setQ] = useState("");
   const [users, setUsers] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [requestingId, setRequestingId] = useState(null);
@@ -13,6 +14,19 @@ export default function SearchPage() {
   const [requestSuccess, setRequestSuccess] = useState("");
   const debounceRef = useRef(null);
   const abortControllerRef = useRef(null);
+
+  useEffect(() => {
+    const loadPending = async () => {
+      try {
+        const { data } = await api.get("/friends/requests/sent");
+        setPendingRequests(data.requests.map((request) => request.receiver._id));
+      } catch {
+        setPendingRequests([]);
+      }
+    };
+
+    loadPending();
+  }, []);
 
   const loadUsers = async (query) => {
     const trimmedQuery = query.trim();
@@ -76,11 +90,31 @@ export default function SearchPage() {
 
     try {
       await api.post(`/friends/request/${id}`);
-      setUsers((current) => current.filter((person) => person._id !== id));
+      setPendingRequests((current) => Array.from(new Set([...current, id])));
       setRequestSuccess("Friend request sent.");
     } catch (err) {
       setRequestError(
         err?.response?.data?.message || "Unable to send friend request.",
+      );
+    } finally {
+      setRequestingId(null);
+    }
+  };
+
+  const cancelRequest = async (id) => {
+    if (!id) return;
+
+    setRequestError("");
+    setRequestSuccess("");
+    setRequestingId(id);
+
+    try {
+      await api.delete(`/friends/request/${id}`);
+      setPendingRequests((current) => current.filter((pendingId) => pendingId !== id));
+      setRequestSuccess("Friend request cancelled.");
+    } catch (err) {
+      setRequestError(
+        err?.response?.data?.message || "Unable to cancel friend request.",
       );
     } finally {
       setRequestingId(null);
@@ -145,14 +179,24 @@ export default function SearchPage() {
                 <p className="text-sm text-slate-500">{person.email}</p>
               </div>
             </div>
-            <button
-              onClick={() => sendRequest(person._id)}
-              disabled={requestingId === person._id}
-              className="flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-700 dark:bg-slate-800 dark:text-brand-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <UserPlus size={18} />
-              Add
-            </button>
+            {pendingRequests.includes(person._id) ? (
+              <button
+                onClick={() => cancelRequest(person._id)}
+                disabled={requestingId === person._id}
+                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel Request
+              </button>
+            ) : (
+              <button
+                onClick={() => sendRequest(person._id)}
+                disabled={requestingId === person._id}
+                className="flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-700 dark:bg-slate-800 dark:text-brand-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <UserPlus size={18} />
+                Add
+              </button>
+            )}
           </div>
         ))}
       </div>

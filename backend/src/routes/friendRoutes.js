@@ -1,6 +1,7 @@
 import express from "express";
 import {
   blockUser,
+  cancelRequest,
   listFriends,
   listRequests,
   listSentRequests,
@@ -18,6 +19,7 @@ router.get("/requests", listRequests);
 router.get("/requests/sent", listSentRequests);
 router.get("/list", listFriends);
 router.post("/request/:userId", sendRequest);
+router.delete("/request/:userId", cancelRequest);
 router.patch("/request/:requestId", respondRequest);
 router.post("/block/:userId", blockUser);
 router.delete("/block/:userId", unblockUser);

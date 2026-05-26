@@ -25,6 +25,9 @@ const messageSchema = new mongoose.Schema(
     text: { type: String, trim: true, maxlength: 2000, default: "" },
     image: { type: mediaSchema, default: null },
     audio: { type: mediaSchema, default: null },
+    isEdited: { type: Boolean, default: false },
+    editedAt: { type: Date },
+    isUnsent: { type: Boolean, default: false },
     deliveredTo: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     seenBy: [
       {
