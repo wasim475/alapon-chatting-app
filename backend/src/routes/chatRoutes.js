@@ -19,6 +19,7 @@ router.get("/conversations", listConversations);
 router.post("/conversations/:userId", getOrCreateConversation);
 router.get("/conversations/:conversationId/messages", listMessages);
 router.patch("/conversations/:conversationId/read", markConversationRead);
+router.post("/conversations/:conversationId/read", markConversationRead);
 router.post(
   "/conversations/:conversationId/messages",
   upload.single("media"),

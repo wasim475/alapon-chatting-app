@@ -209,14 +209,18 @@ export const listConversations = catchAsync(async (req, res) => {
       partner.online = isUserOnline(partner._id);
     }
 
-    const storedUnread =
-      conversation.unreadCounts?.get(String(req.user._id)) ||
-      unreadMap.get(String(conversation._id)) ||
-      0;
+    let storedUnread = 0;
+    if (conversation.unreadCounts) {
+      if (typeof conversation.unreadCounts.get === "function") {
+        storedUnread = conversation.unreadCounts.get(String(req.user._id)) || 0;
+      } else {
+        storedUnread = conversation.unreadCounts[String(req.user._id)] || 0;
+      }
+    }
 
     return {
       ...conversationObject,
-      unreadCount: storedUnread,
+      unreadCount: storedUnread || unreadMap.get(String(conversation._id)) || 0,
     };
   });
 
@@ -316,7 +320,12 @@ export const markConversationRead = catchAsync(async (req, res, next) => {
     },
   );
 
-  conversation.unreadCounts.set(String(req.user._id), 0);
+  conversation.unreadCounts = conversation.unreadCounts || new Map();
+  if (typeof conversation.unreadCounts.set === "function") {
+    conversation.unreadCounts.set(String(req.user._id), 0);
+  } else {
+    conversation.unreadCounts[String(req.user._id)] = 0;
+  }
   await conversation.save();
 
   const io = req.app.get("io");
@@ -521,9 +530,19 @@ export const sendMessage = catchAsync(async (req, res, next) => {
 
   conversation.lastMessage = message._id;
   conversation.lastMessageAt = message.createdAt;
+  conversation.unreadCounts = conversation.unreadCounts || new Map();
   const receiverId = String(otherParticipantId);
-  const existingUnread = conversation.unreadCounts?.get(receiverId) || 0;
-  conversation.unreadCounts.set(receiverId, existingUnread + 1);
+  const existingUnread =
+    typeof conversation.unreadCounts.get === "function"
+      ? conversation.unreadCounts.get(receiverId) || 0
+      : conversation.unreadCounts[receiverId] || 0;
+
+  if (typeof conversation.unreadCounts.set === "function") {
+    conversation.unreadCounts.set(receiverId, existingUnread + 1);
+  } else {
+    conversation.unreadCounts[receiverId] = existingUnread + 1;
+  }
+
   await conversation.save();
   await message.populate("sender", "name profile.avatar");
 

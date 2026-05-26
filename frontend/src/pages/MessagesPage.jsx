@@ -30,6 +30,9 @@ export default function MessagesPage() {
   const [error, setError] = useState("");
   const [typingParticipant, setTypingParticipant] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  const [socketStatus, setSocketStatus] = useState("disconnected");
+  const [callDebugLogs, setCallDebugLogs] = useState([]);
+  const [mediaPermissionStatus, setMediaPermissionStatus] = useState("unknown");
   const [callState, setCallState] = useState("idle");
   const [incomingCall, setIncomingCall] = useState(null);
   const [callError, setCallError] = useState("");
@@ -45,6 +48,7 @@ export default function MessagesPage() {
   const [recordingError, setRecordingError] = useState("");
   const endRef = useRef(null);
   const activeRef = useRef(active);
+  const conversationsRef = useRef([]);
   const peerConnectionRef = useRef(null);
   const typingRef = useRef(false);
   const typingTimeoutRef = useRef(null);
@@ -74,6 +78,13 @@ export default function MessagesPage() {
     if (lastMessage.image) return "Photo";
     if (lastMessage.audio) return "Audio";
     return "New message";
+  };
+
+  const addDebugLog = (message) => {
+    setCallDebugLogs((current) => [
+      ...current.slice(-24),
+      `${new Date().toLocaleTimeString()}: ${message}`,
+    ]);
   };
 
   const handleSelectConversation = (conversation) => {
@@ -293,8 +304,12 @@ export default function MessagesPage() {
     try {
       await api.patch(`/chats/conversations/${conversationId}/read`);
       updateConversationMeta(conversationId, { unreadCount: 0 });
-    } catch {
-      // ignore errors while marking read
+      addDebugLog(`Marked conversation ${conversationId} as read`);
+    } catch (err) {
+      console.error("Read mark failed", err);
+      addDebugLog(
+        `Read mark failed: ${err?.response?.data?.message || err.message}`,
+      );
     }
   };
 
@@ -355,12 +370,21 @@ export default function MessagesPage() {
   };
 
   const createPeerConnection = (remoteUserId) => {
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
+    const iceServers = [
+      { urls: "stun:stun.l.google.com:19302" },
+      {
+        urls: [
+          "stun:stun1.l.google.com:19302",
+          "stun:stun2.l.google.com:19302",
+        ],
+      },
+    ];
+
+    const pc = new RTCPeerConnection({ iceServers });
 
     pc.ontrack = (event) => {
       setRemoteStream(event.streams[0]);
+      addDebugLog("Remote stream received");
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0];
       }
@@ -375,9 +399,17 @@ export default function MessagesPage() {
         conversationId: activeRef.current._id,
         candidate: event.candidate,
       });
+      addDebugLog("Sent ICE candidate");
+    };
+
+    pc.onicecandidateerror = (event) => {
+      addDebugLog(
+        `ICE candidate error: ${event.errorText || event.error?.message}`,
+      );
     };
 
     pc.onconnectionstatechange = () => {
+      addDebugLog(`Peer connection state: ${pc.connectionState}`);
       if (
         pc.connectionState === "failed" ||
         pc.connectionState === "disconnected" ||
@@ -398,6 +430,7 @@ export default function MessagesPage() {
           receiverId: receiver._id,
           conversationId: activeRef.current._id,
         });
+        addDebugLog("Sent hangup signal");
       }
     }
 
@@ -422,15 +455,27 @@ export default function MessagesPage() {
 
     setIsMuted(false);
     setCameraOn(true);
+    setMediaPermissionStatus("unknown");
+    addDebugLog("Call ended and cleaned up");
   };
 
   const callUser = async (useVideo) => {
-    if (!socket || !activeRef.current) return;
+    if (!socket || !activeRef.current || callState !== "idle") {
+      addDebugLog(
+        "Call request ignored because another call is already active",
+      );
+      return;
+    }
+
     const receiver = otherParticipant(activeRef.current);
-    if (!receiver) return;
+    if (!receiver) {
+      setCallError("No active conversation participant available.");
+      return;
+    }
 
     setCallState("calling");
     setCallError("");
+    addDebugLog(`Attempting call to ${receiver.name}`);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -438,6 +483,7 @@ export default function MessagesPage() {
         video: useVideo,
       });
 
+      setMediaPermissionStatus("granted");
       setLocalStream(stream);
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
@@ -456,8 +502,11 @@ export default function MessagesPage() {
         callerId: user._id,
         callerName: user.name,
       });
+      addDebugLog("Offer sent");
     } catch (err) {
       setCallError("Unable to initiate the call.");
+      setMediaPermissionStatus("denied");
+      addDebugLog(`Call initiation failed: ${err?.message}`);
       endCall(false);
     }
   };
@@ -466,6 +515,7 @@ export default function MessagesPage() {
     if (!socket || !incomingCall) return;
     setCallState("inCall");
     setCallError("");
+    addDebugLog("Accepting incoming call");
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -473,6 +523,7 @@ export default function MessagesPage() {
         video: incomingCall.isVideo,
       });
 
+      setMediaPermissionStatus("granted");
       setLocalStream(stream);
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
@@ -489,9 +540,12 @@ export default function MessagesPage() {
         conversationId: incomingCall.conversationId,
         answer,
       });
+      addDebugLog("Answer sent");
       setIncomingCall(null);
     } catch (err) {
       setCallError("Unable to answer the call.");
+      setMediaPermissionStatus("denied");
+      addDebugLog(`Answer failed: ${err?.message}`);
       endCall(false);
     }
   };
@@ -533,6 +587,10 @@ export default function MessagesPage() {
   }, [active]);
 
   useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  useEffect(() => {
     loadConversations();
   }, []);
 
@@ -557,6 +615,25 @@ export default function MessagesPage() {
   useEffect(() => {
     if (!socket) return undefined;
 
+    const handleSocketConnect = () => {
+      setSocketStatus("connected");
+      addDebugLog("Socket connected");
+    };
+
+    const handleSocketReconnect = () => {
+      setSocketStatus("reconnected");
+      addDebugLog("Socket reconnected");
+    };
+
+    const handleSocketDisconnect = () => {
+      setSocketStatus("disconnected");
+      addDebugLog("Socket disconnected");
+    };
+
+    const handleSocketError = (error) => {
+      addDebugLog(`Socket error: ${error?.message || error}`);
+    };
+
     const handleMessage = (message) => {
       if (!message?._id) return;
       const conversationId = String(
@@ -564,6 +641,7 @@ export default function MessagesPage() {
       );
       const isMine =
         String(message.sender?._id || message.sender) === String(user._id);
+      const currentConversations = conversationsRef.current;
 
       if (
         activeRef.current &&
@@ -584,8 +662,9 @@ export default function MessagesPage() {
 
       updateConversationMeta(conversationId, {
         unreadCount:
-          (conversations.find((conv) => String(conv._id) === conversationId)
-            ?.unreadCount || 0) + (isMine ? 0 : 1),
+          (currentConversations.find(
+            (conv) => String(conv._id) === conversationId,
+          )?.unreadCount || 0) + (isMine ? 0 : 1),
         lastMessage: message,
         lastMessageAt: message.createdAt,
       });
@@ -593,6 +672,24 @@ export default function MessagesPage() {
       if (!isMine) {
         playIncomingMessageSound();
       }
+      addDebugLog(`New message in conversation ${conversationId}`);
+    };
+
+    const handleConversationUpdate = ({
+      conversationId,
+      lastMessage,
+      lastMessageAt,
+      unreadIncrement = 0,
+    }) => {
+      updateConversationMeta(conversationId, {
+        lastMessage,
+        lastMessageAt,
+        unreadCount:
+          (conversationsRef.current.find(
+            (conv) => String(conv._id) === String(conversationId),
+          )?.unreadCount || 0) + unreadIncrement,
+      });
+      addDebugLog(`Conversation ${conversationId} updated`);
     };
 
     const handleTypingStart = ({ conversationId, userId, userName }) => {
@@ -627,15 +724,18 @@ export default function MessagesPage() {
       if (!conversationId || !offer || !callerId) return;
       setIncomingCall({ conversationId, offer, isVideo, callerId, callerName });
       setCallState("ringing");
+      addDebugLog("Incoming call received");
     };
 
-    const handleCallAnswer = async ({ conversationId, answer }) => {
+    const handleCallAnswer = async ({ answer }) => {
       if (!peerConnectionRef.current || !answer) return;
       try {
         await peerConnectionRef.current.setRemoteDescription(answer);
         setCallState("inCall");
-      } catch {
+        addDebugLog("Call answer received");
+      } catch (err) {
         setCallError("Failed to receive call answer.");
+        addDebugLog(`Answer receive failed: ${err?.message}`);
         endCall(false);
       }
     };
@@ -644,54 +744,35 @@ export default function MessagesPage() {
       if (!peerConnectionRef.current || !candidate) return;
       try {
         await peerConnectionRef.current.addIceCandidate(candidate);
-      } catch {
-        // ignore invalid candidate
+        addDebugLog("ICE candidate added");
+      } catch (err) {
+        addDebugLog(`ICE candidate failed: ${err?.message}`);
       }
     };
 
     const handleCallEnded = () => {
+      addDebugLog("Call ended by remote");
       endCall(false);
     };
 
     const handleCallRejected = () => {
       setCallError("Call rejected.");
+      addDebugLog("Call rejected by remote");
       endCall(false);
     };
 
-    const handleMessageRead = ({ conversationId, userId }) => {
-      if (
-        !activeRef.current ||
-        String(activeRef.current._id) !== String(conversationId)
-      ) {
-        updateConversationMeta(conversationId, { unreadCount: 0 });
-        return;
-      }
+    const handleConversationRead = ({ conversationId }) => {
       updateConversationMeta(conversationId, { unreadCount: 0 });
-      setMessages((current) =>
-        current.map((message) => {
-          const isMine =
-            String(message.sender?._id || message.sender) === String(user._id);
-          if (!isMine) return message;
-          const hasSeen = Array.isArray(message.seenBy)
-            ? message.seenBy.some(
-                (entry) => String(entry.user) === String(userId),
-              )
-            : false;
-
-          if (hasSeen) return message;
-          return {
-            ...message,
-            seenBy: [
-              ...(message.seenBy || []),
-              { user: userId, seenAt: new Date().toISOString() },
-            ],
-          };
-        }),
-      );
+      addDebugLog(`Conversation ${conversationId} marked read remotely`);
     };
 
+    socket.on("connect", handleSocketConnect);
+    socket.on("reconnect", handleSocketReconnect);
+    socket.on("disconnect", handleSocketDisconnect);
+    socket.on("connect_error", handleSocketError);
     socket.on("message:new", handleMessage);
-    socket.on("message:read", handleMessageRead);
+    socket.on("message:read", handleConversationRead);
+    socket.on("conversation:updated", handleConversationUpdate);
     socket.on("typing:start", handleTypingStart);
     socket.on("typing:stop", handleTypingStop);
     socket.on("call:incoming", handleCallIncoming);
@@ -700,9 +781,18 @@ export default function MessagesPage() {
     socket.on("call:ended", handleCallEnded);
     socket.on("call:rejected", handleCallRejected);
 
+    if (socket.connected) {
+      handleSocketConnect();
+    }
+
     return () => {
+      socket.off("connect", handleSocketConnect);
+      socket.off("reconnect", handleSocketReconnect);
+      socket.off("disconnect", handleSocketDisconnect);
+      socket.off("connect_error", handleSocketError);
       socket.off("message:new", handleMessage);
-      socket.off("message:read", handleMessageRead);
+      socket.off("message:read", handleConversationRead);
+      socket.off("conversation:updated", handleConversationUpdate);
       socket.off("typing:start", handleTypingStart);
       socket.off("typing:stop", handleTypingStop);
       socket.off("call:incoming", handleCallIncoming);
@@ -711,7 +801,7 @@ export default function MessagesPage() {
       socket.off("call:ended", handleCallEnded);
       socket.off("call:rejected", handleCallRejected);
     };
-  }, [socket, user._id, conversations]);
+  }, [socket, user._id]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -850,6 +940,21 @@ export default function MessagesPage() {
                   <Video size={16} /> Video
                 </button>
               </div>
+            </div>
+
+            <div className="border-b border-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+              <div className="flex flex-wrap items-center gap-3">
+                <span>Socket: {socketStatus}</span>
+                <span>Call state: {callState}</span>
+                <span>Media: {mediaPermissionStatus}</span>
+              </div>
+              {callDebugLogs.length > 0 && (
+                <div className="mt-2 space-y-1 rounded-2xl bg-slate-50 p-3 text-[11px] text-slate-600 dark:bg-slate-950 dark:text-slate-300">
+                  {callDebugLogs.slice(-4).map((log, index) => (
+                    <div key={`${log}-${index}`}>{log}</div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="scrollbar-thin flex-1 space-y-3 overflow-y-auto p-4">
