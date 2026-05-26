@@ -32,12 +32,17 @@ export default function FeedPage() {
 
   const likePost = async (postId) => {
     const { data } = await api.post(`/posts/${postId}/like`);
-    setPosts((current) => current.map((post) => (post._id === postId ? data.post : post)));
+    setPosts((current) =>
+      current.map((post) => (post._id === postId ? data.post : post)),
+    );
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <form onSubmit={submitPost} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div className="mx-auto w-full max-w-2xl space-y-4 px-4 sm:px-0">
+      <form
+        onSubmit={submitPost}
+        className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+      >
         <div className="flex gap-3">
           <Avatar src={user.profile?.avatar} name={user.name} />
           <textarea
@@ -48,7 +53,10 @@ export default function FeedPage() {
           />
         </div>
         <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
-          <button type="button" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
+          <button
+            type="button"
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
             <ImagePlus size={18} />
             Photo
           </button>
@@ -60,9 +68,13 @@ export default function FeedPage() {
       </form>
 
       {loading ? (
-        <p className="rounded-lg bg-white p-6 text-center text-slate-500 dark:bg-slate-900">Loading feed...</p>
+        <p className="rounded-lg bg-white p-6 text-center text-slate-500 dark:bg-slate-900">
+          Loading feed...
+        </p>
       ) : posts.length ? (
-        posts.map((post) => <PostCard key={post._id} post={post} onLike={likePost} />)
+        posts.map((post) => (
+          <PostCard key={post._id} post={post} onLike={likePost} />
+        ))
       ) : (
         <p className="rounded-lg bg-white p-6 text-center text-slate-500 dark:bg-slate-900">
           Your feed is quiet. Add friends or publish the first post.

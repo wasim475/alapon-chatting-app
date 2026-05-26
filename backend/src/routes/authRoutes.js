@@ -20,3 +20,4 @@ router.post("/forgot-password", authLimiter, forgotPassword);
 router.patch("/reset-password/:token", authLimiter, resetPassword);
 
 export default router;
+ 

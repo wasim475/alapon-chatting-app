@@ -6,13 +6,18 @@ import { connectDB } from "./config/db.js";
 import { registerSocketHandlers } from "./socket/index.js";
 
 dotenv.config();
-
+ 
 const port = process.env.PORT || 5000;
 const server = http.createServer(app);
 
+const normalizeOrigin = (value) =>
+  typeof value === "string" ? value.replace(/\/+$/, "") : value;
+
+const clientOrigin = normalizeOrigin(process.env.CLIENT_URL);
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL,
+    origin: clientOrigin,
     credentials: true
   }
 });

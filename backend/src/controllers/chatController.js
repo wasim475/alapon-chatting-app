@@ -14,14 +14,17 @@ export const getOrCreateConversation = catchAsync(async (req, res, next) => {
   }
 
   let conversation = await Conversation.findOne({
-    participants: { $all: [req.user._id, friendId], $size: 2 }
+    participants: { $all: [req.user._id, friendId], $size: 2 },
   }).populate("participants", "name profile.avatar lastSeenAt");
 
   if (!conversation) {
     conversation = await Conversation.create({
-      participants: [req.user._id, friendId]
+      participants: [req.user._id, friendId],
     });
-    await conversation.populate("participants", "name profile.avatar lastSeenAt");
+    await conversation.populate(
+      "participants",
+      "name profile.avatar lastSeenAt",
+    );
   }
 
   res.json({ status: "success", conversation });
@@ -37,7 +40,9 @@ export const listConversations = catchAsync(async (req, res) => {
 });
 
 export const listMessages = catchAsync(async (req, res) => {
-  const messages = await Message.find({ conversation: req.params.conversationId })
+  const messages = await Message.find({
+    conversation: req.params.conversationId,
+  })
     .populate("sender", "name profile.avatar")
     .sort({ createdAt: 1 })
     .limit(80);
@@ -48,7 +53,7 @@ export const listMessages = catchAsync(async (req, res) => {
 export const sendMessage = catchAsync(async (req, res, next) => {
   const conversation = await Conversation.findOne({
     _id: req.params.conversationId,
-    participants: req.user._id
+    participants: req.user._id,
   });
 
   if (!conversation) return next(new AppError("Conversation not found", 404));
@@ -61,7 +66,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
     conversation: conversation._id,
     sender: req.user._id,
     text: req.body.text,
-    image
+    image,
   });
 
   conversation.lastMessage = message._id;
@@ -69,9 +74,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
   await conversation.save();
   await message.populate("sender", "name profile.avatar");
 
-  conversation.participants.forEach((participantId) => {
-    req.app.get("io").to(String(participantId)).emit("message:new", message);
-  });
+  req.app.get("io").to(String(conversation._id)).emit("message:new", message);
 
   res.status(201).json({ status: "success", message });
 });

@@ -1,14 +1,14 @@
-import React from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/layout/Layout.jsx";
 import ProtectedRoute from "./components/routing/ProtectedRoute.jsx";
+import { useAuth } from "./context/AuthContext.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import FeedPage from "./pages/FeedPage.jsx";
+import FriendsPage from "./pages/FriendsPage.jsx";
 import MessagesPage from "./pages/MessagesPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
 import SearchPage from "./pages/SearchPage.jsx";
-import { useAuth } from "./context/AuthContext.jsx";
-
+import React from 'react'
 export default function App() {
   const { user, booting } = useAuth();
 
@@ -31,6 +31,7 @@ export default function App() {
         }
       >
         <Route path="/" element={<FeedPage />} />
+        <Route path="/friends" element={<FriendsPage />} />
         <Route path="/messages" element={<MessagesPage />} />
         <Route path="/profile/:id" element={<ProfilePage />} />
         <Route path="/search" element={<SearchPage />} />
