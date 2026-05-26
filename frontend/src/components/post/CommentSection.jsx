@@ -1,8 +1,8 @@
 import { CornerDownRight, Send } from "lucide-react";
-import React, { useEffect, useMemo, useState } from "react";
-import Avatar from "../ui/Avatar.jsx";
-import { api } from "../../lib/api.js";
+import React, { useEffect, useState } from "react";
 import { useSocket } from "../../context/SocketContext.jsx";
+import { api } from "../../lib/api.js";
+import Avatar from "../ui/Avatar.jsx";
 
 const buildTree = (comments) => {
   const map = new Map();
@@ -65,7 +65,11 @@ const formatTime = (value) => new Date(value).toLocaleString();
 const CommentItem = ({ comment, onReply }) => (
   <div className="space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
     <div className="flex items-start gap-3">
-      <Avatar src={comment.author?.profile?.avatar} name={comment.author?.name} size="sm" />
+      <Avatar
+        src={comment.author?.profile?.avatar}
+        name={comment.author?.name}
+        size="sm"
+      />
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-semibold">{comment.author?.name}</p>
@@ -95,7 +99,11 @@ const CommentItem = ({ comment, onReply }) => (
   </div>
 );
 
-export default function CommentSection({ postId, initialCount = 0, onCountChange }) {
+export default function CommentSection({
+  postId,
+  initialCount = 0,
+  onCountChange,
+}) {
   const { socket } = useSocket();
   const [comments, setComments] = useState([]);
   const [visible, setVisible] = useState(false);
@@ -140,7 +148,9 @@ export default function CommentSection({ postId, initialCount = 0, onCountChange
 
     const handleDeletedComment = ({ postId: eventPostId, deletedIds }) => {
       if (String(eventPostId) !== String(postId)) return;
-      setComments((current) => deletedIds.reduce((tree, id) => removeComment(tree, id), current));
+      setComments((current) =>
+        deletedIds.reduce((tree, id) => removeComment(tree, id), current),
+      );
       setCommentCount((current) => Math.max(0, current - deletedIds.length));
     };
 
@@ -166,7 +176,9 @@ export default function CommentSection({ postId, initialCount = 0, onCountChange
       const { data } = await api.post(`/posts/${postId}/comments`, payload);
       setText("");
       setReplyTo(null);
-      setComments((current) => appendReply(current, { ...data.comment, replies: [] }));
+      setComments((current) =>
+        appendReply(current, { ...data.comment, replies: [] }),
+      );
       setCommentCount((current) => current + 1);
     } catch (err) {
       setError(err?.response?.data?.message || "Unable to post comment.");
@@ -205,7 +217,11 @@ export default function CommentSection({ postId, initialCount = 0, onCountChange
               value={text}
               onChange={(event) => setText(event.target.value)}
               rows={3}
-              placeholder={replyTo ? `Reply to ${replyTo.author?.name}` : "Write a comment..."}
+              placeholder={
+                replyTo
+                  ? `Reply to ${replyTo.author?.name}`
+                  : "Write a comment..."
+              }
               className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
             />
             <div className="flex items-center justify-end gap-3">
@@ -233,7 +249,11 @@ export default function CommentSection({ postId, initialCount = 0, onCountChange
           ) : comments.length ? (
             <div className="space-y-3">
               {comments.map((comment) => (
-                <CommentItem key={comment._id} comment={comment} onReply={setReplyTo} />
+                <CommentItem
+                  key={comment._id}
+                  comment={comment}
+                  onReply={setReplyTo}
+                />
               ))}
             </div>
           ) : (

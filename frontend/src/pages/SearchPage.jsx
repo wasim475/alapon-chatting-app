@@ -19,7 +19,9 @@ export default function SearchPage() {
     const loadPending = async () => {
       try {
         const { data } = await api.get("/friends/requests/sent");
-        setPendingRequests(data.requests.map((request) => request.receiver._id));
+        setPendingRequests(
+          data.requests.map((request) => request.receiver._id),
+        );
       } catch {
         setPendingRequests([]);
       }
@@ -110,7 +112,9 @@ export default function SearchPage() {
 
     try {
       await api.delete(`/friends/request/${id}`);
-      setPendingRequests((current) => current.filter((pendingId) => pendingId !== id));
+      setPendingRequests((current) =>
+        current.filter((pendingId) => pendingId !== id),
+      );
       setRequestSuccess("Friend request cancelled.");
     } catch (err) {
       setRequestError(

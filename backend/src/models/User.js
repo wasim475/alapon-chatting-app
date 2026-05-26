@@ -10,9 +10,9 @@ const profileSchema = new mongoose.Schema(
     work: { type: String, maxlength: 120, default: "" },
     education: { type: String, maxlength: 120, default: "" },
     location: { type: String, maxlength: 120, default: "" },
-    website: { type: String, default: "" }
+    website: { type: String, default: "" },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const userSchema = new mongoose.Schema(
@@ -21,20 +21,20 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Name is required"],
       trim: true,
-      maxlength: 80
+      maxlength: 80,
     },
     email: {
       type: String,
       required: [true, "Email is required"],
       unique: true,
       lowercase: true,
-      validate: [validator.isEmail, "Please provide a valid email"]
+      validate: [validator.isEmail, "Please provide a valid email"],
     },
     password: {
       type: String,
       required: [true, "Password is required"],
       minlength: 8,
-      select: false
+      select: false,
     },
     profile: { type: profileSchema, default: () => ({}) },
     friends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
@@ -45,9 +45,9 @@ const userSchema = new mongoose.Schema(
     lastSeenAt: { type: Date, default: Date.now },
     passwordChangedAt: { type: Date, select: false },
     passwordResetToken: { type: String, select: false },
-    passwordResetExpires: { type: Date, select: false }
+    passwordResetExpires: { type: Date, select: false },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 userSchema.index({ name: "text", email: "text" });

@@ -11,8 +11,11 @@ const conversationSchema = new mongoose.Schema(
     ],
     lastMessage: { type: mongoose.Schema.Types.ObjectId, ref: "Message" },
     lastMessageAt: { type: Date, default: Date.now },
+  unreadCounts: {
+    type: Map,
+    of: Number,
+    default: {},
   },
-  { timestamps: true },
 );
 
 conversationSchema.pre("save", function (next) {

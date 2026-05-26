@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  deleteMessage,
   editMessage,
   getOrCreateConversation,
   listConversations,
@@ -7,7 +8,6 @@ import {
   markConversationRead,
   sendMessage,
   unsendMessage,
-  deleteMessage,
 } from "../controllers/chatController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/uploadMiddleware.js";
@@ -24,10 +24,7 @@ router.post(
   upload.single("media"),
   sendMessage,
 );
-router.patch(
-  "/conversations/:conversationId/messages/:messageId",
-  editMessage,
-);
+router.patch("/conversations/:conversationId/messages/:messageId", editMessage);
 router.delete(
   "/conversations/:conversationId/messages/:messageId",
   deleteMessage,

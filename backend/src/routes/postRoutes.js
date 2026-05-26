@@ -7,7 +7,7 @@ import {
   getComments,
   getFeed,
   toggleLike,
-  updatePost
+  updatePost,
 } from "../controllers/postController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/uploadMiddleware.js";

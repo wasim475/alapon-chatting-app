@@ -13,7 +13,11 @@ export default function FriendsPage() {
   const [actionError, setActionError] = useState(null);
   const [actionSuccess, setActionSuccess] = useState(null);
   const [menuOpenFor, setMenuOpenFor] = useState(null);
-  const [confirm, setConfirm] = useState({ open: false, action: "", friend: null });
+  const [confirm, setConfirm] = useState({
+    open: false,
+    action: "",
+    friend: null,
+  });
 
   useEffect(() => {
     api
@@ -38,7 +42,8 @@ export default function FriendsPage() {
     setActionSuccess(null);
   };
 
-  const closeConfirm = () => setConfirm({ open: false, action: "", friend: null });
+  const closeConfirm = () =>
+    setConfirm({ open: false, action: "", friend: null });
 
   const removeFriend = async (id) => {
     setActionError(null);
@@ -51,7 +56,9 @@ export default function FriendsPage() {
       setActionSuccess("Friend removed.");
       closeConfirm();
     } catch (err) {
-      setActionError(err?.response?.data?.message || "Unable to remove friend.");
+      setActionError(
+        err?.response?.data?.message || "Unable to remove friend.",
+      );
     } finally {
       setActioningId(null);
     }
@@ -153,7 +160,11 @@ export default function FriendsPage() {
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setMenuOpenFor((current) => current === friend._id ? null : friend._id)}
+                    onClick={() =>
+                      setMenuOpenFor((current) =>
+                        current === friend._id ? null : friend._id,
+                      )
+                    }
                     className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
                     <MoreHorizontal size={18} />
@@ -195,7 +206,9 @@ export default function FriendsPage() {
                 Confirm {confirm.action === "block" ? "block" : "unfriend"}
               </p>
               <h2 className="text-xl font-semibold">
-                {confirm.action === "block" ? "Block this user?" : "Remove friend?"}
+                {confirm.action === "block"
+                  ? "Block this user?"
+                  : "Remove friend?"}
               </h2>
               <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
                 {confirm.action === "block"

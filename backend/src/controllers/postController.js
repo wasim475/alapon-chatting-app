@@ -19,7 +19,7 @@ export const createPost = catchAsync(async (req, res) => {
     author: req.user._id,
     text: req.body.text,
     images,
-    visibility: req.body.visibility || "friends"
+    visibility: req.body.visibility || "friends",
   });
 
   await post.populate("author", "name profile.avatar");
@@ -35,8 +35,8 @@ export const getFeed = catchAsync(async (req, res) => {
     $or: [
       { visibility: "public" },
       { visibility: "friends", author: { $in: visibleAuthors } },
-      { visibility: "private", author: req.user._id }
-    ]
+      { visibility: "private", author: req.user._id },
+    ],
   })
     .populate("author", "name profile.avatar")
     .sort({ createdAt: -1 })
@@ -64,7 +64,7 @@ export const toggleLike = catchAsync(async (req, res, next) => {
       type: "post_like",
       entityType: "Post",
       entity: post._id,
-      text: `${req.user.name} liked your post`
+      text: `${req.user.name} liked your post`,
     });
   }
 
@@ -147,7 +147,9 @@ export const getComments = catchAsync(async (req, res) => {
 const collectCommentDescendants = async (rootId) => {
   const ids = [rootId];
   for (let i = 0; i < ids.length; i += 1) {
-    const children = await Comment.find({ parentComment: ids[i] }).select("_id").lean();
+    const children = await Comment.find({ parentComment: ids[i] })
+      .select("_id")
+      .lean();
     children.forEach((child) => ids.push(child._id));
   }
   return ids;
@@ -162,7 +164,9 @@ export const deleteComment = catchAsync(async (req, res, next) => {
 
   const idsToDelete = await collectCommentDescendants(comment._id);
   await Comment.deleteMany({ _id: { $in: idsToDelete } });
-  await Post.findByIdAndUpdate(comment.post, { $inc: { commentCount: -idsToDelete.length } });
+  await Post.findByIdAndUpdate(comment.post, {
+    $inc: { commentCount: -idsToDelete.length },
+  });
 
   req.app.get("io")?.emit("comment:deleted", {
     postId: String(comment.post),
@@ -170,14 +174,17 @@ export const deleteComment = catchAsync(async (req, res, next) => {
     deletedIds: idsToDelete.map((id) => String(id)),
   });
 
-  res.json({ status: "success", deletedIds: idsToDelete.map((id) => String(id)) });
+  res.json({
+    status: "success",
+    deletedIds: idsToDelete.map((id) => String(id)),
+  });
 });
 
 export const updatePost = catchAsync(async (req, res, next) => {
   const post = await Post.findOneAndUpdate(
     { _id: req.params.postId, author: req.user._id },
     { text: req.body.text, isEdited: true },
-    { new: true, runValidators: true }
+    { new: true, runValidators: true },
   );
 
   if (!post) return next(new AppError("Post not found", 404));
@@ -187,7 +194,7 @@ export const updatePost = catchAsync(async (req, res, next) => {
 export const deletePost = catchAsync(async (req, res, next) => {
   const post = await Post.findOneAndDelete({
     _id: req.params.postId,
-    author: req.user._id
+    author: req.user._id,
   });
 
   if (!post) return next(new AppError("Post not found", 404));

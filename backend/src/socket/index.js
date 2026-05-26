@@ -15,10 +15,14 @@ const isInteractionBlocked = async (callerId, receiverId) => {
   if (!caller || !receiver) return true;
 
   const callerBlocks = Array.isArray(caller.blockedUsers)
-    ? caller.blockedUsers.some((blockedId) => String(blockedId) === String(receiverId))
+    ? caller.blockedUsers.some(
+        (blockedId) => String(blockedId) === String(receiverId),
+      )
     : false;
   const receiverBlocks = Array.isArray(receiver.blockedUsers)
-    ? receiver.blockedUsers.some((blockedId) => String(blockedId) === String(callerId))
+    ? receiver.blockedUsers.some(
+        (blockedId) => String(blockedId) === String(callerId),
+      )
     : false;
 
   return callerBlocks || receiverBlocks;
@@ -35,10 +39,17 @@ export const registerSocketHandlers = (io) => {
       io.emit("presence:update", { userId, status: "online" });
     });
 
-    socket.on("typing:start", ({ conversationId, receiverId, userId, userName }) => {
-      if (!receiverId || !conversationId) return;
-      io.to(receiverId).emit("typing:start", { conversationId, userId, userName });
-    });
+    socket.on(
+      "typing:start",
+      ({ conversationId, receiverId, userId, userName }) => {
+        if (!receiverId || !conversationId) return;
+        io.to(receiverId).emit("typing:start", {
+          conversationId,
+          userId,
+          userName,
+        });
+      },
+    );
 
     socket.on("typing:stop", ({ conversationId, receiverId, userId }) => {
       if (!receiverId || !conversationId) return;
@@ -55,19 +66,29 @@ export const registerSocketHandlers = (io) => {
       socket.leave(conversationId);
     });
 
-    socket.on("call:offer", async ({ receiverId, conversationId, offer, isVideo, callerId, callerName }) => {
-      if (!receiverId || !conversationId || !offer) return;
-      if (await isInteractionBlocked(socket.userId, receiverId)) return;
-      const receiverSocketId = onlineUsers.get(String(receiverId));
-      if (!receiverSocketId) return;
-      io.to(receiverSocketId).emit("call:incoming", {
+    socket.on(
+      "call:offer",
+      async ({
+        receiverId,
         conversationId,
         offer,
         isVideo,
         callerId,
         callerName,
-      });
-    });
+      }) => {
+        if (!receiverId || !conversationId || !offer) return;
+        if (await isInteractionBlocked(socket.userId, receiverId)) return;
+        const receiverSocketId = onlineUsers.get(String(receiverId));
+        if (!receiverSocketId) return;
+        io.to(receiverSocketId).emit("call:incoming", {
+          conversationId,
+          offer,
+          isVideo,
+          callerId,
+          callerName,
+        });
+      },
+    );
 
     socket.on("call:answer", async ({ receiverId, conversationId, answer }) => {
       if (!receiverId || !conversationId || !answer) return;
@@ -80,16 +101,19 @@ export const registerSocketHandlers = (io) => {
       });
     });
 
-    socket.on("call:candidate", async ({ receiverId, conversationId, candidate }) => {
-      if (!receiverId || !conversationId || !candidate) return;
-      if (await isInteractionBlocked(socket.userId, receiverId)) return;
-      const receiverSocketId = onlineUsers.get(String(receiverId));
-      if (!receiverSocketId) return;
-      io.to(receiverSocketId).emit("call:candidate", {
-        conversationId,
-        candidate,
-      });
-    });
+    socket.on(
+      "call:candidate",
+      async ({ receiverId, conversationId, candidate }) => {
+        if (!receiverId || !conversationId || !candidate) return;
+        if (await isInteractionBlocked(socket.userId, receiverId)) return;
+        const receiverSocketId = onlineUsers.get(String(receiverId));
+        if (!receiverSocketId) return;
+        io.to(receiverSocketId).emit("call:candidate", {
+          conversationId,
+          candidate,
+        });
+      },
+    );
 
     socket.on("call:hangup", async ({ receiverId, conversationId }) => {
       if (!receiverId || !conversationId) return;

@@ -12,13 +12,29 @@ export function SocketProvider({ children }) {
     if (!user?._id) return undefined;
 
     const nextSocket = io(import.meta.env.VITE_SOCKET_URL || "https://alapon-chatting-app.onrender.com", {
-      withCredentials: true
+      withCredentials: true,
     });
 
-    nextSocket.emit("user:join", user._id);
+    const joinUser = () => {
+      nextSocket.emit("user:join", user._id);
+    };
+
+    nextSocket.on("connect", joinUser);
+    nextSocket.on("reconnect", joinUser);
+    nextSocket.on("connect_error", (error) => {
+      console.error("Socket connect error:", error);
+    });
+
+    if (nextSocket.connected) {
+      joinUser();
+    }
+
     setSocket(nextSocket);
 
     return () => {
+      nextSocket.off("connect", joinUser);
+      nextSocket.off("reconnect", joinUser);
+      nextSocket.off("connect_error");
       nextSocket.disconnect();
       setSocket(null);
     };

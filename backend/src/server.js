@@ -6,7 +6,7 @@ import { connectDB } from "./config/db.js";
 import { registerSocketHandlers } from "./socket/index.js";
 
 dotenv.config();
- 
+
 const port = process.env.PORT || 5000;
 const server = http.createServer(app);
 

@@ -1,11 +1,11 @@
 import {
-  Send,
-  Phone,
-  Video,
   Mic,
   MicOff,
-  VideoOff,
+  Phone,
   PhoneOff,
+  Send,
+  Video,
+  VideoOff,
   X,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
@@ -29,6 +29,7 @@ export default function MessagesPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [error, setError] = useState("");
   const [typingParticipant, setTypingParticipant] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
   const [callState, setCallState] = useState("idle");
   const [incomingCall, setIncomingCall] = useState(null);
   const [callError, setCallError] = useState("");
@@ -58,6 +59,32 @@ export default function MessagesPage() {
       (participant) => String(participant._id) !== String(user._id),
     );
 
+  const formatConversationTime = (value) => {
+    if (!value) return "";
+    return new Date(value).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const formatConversationPreview = (conversation) => {
+    const lastMessage = conversation?.lastMessage;
+    if (!lastMessage) return "No messages yet";
+    if (lastMessage.text) return lastMessage.text;
+    if (lastMessage.image) return "Photo";
+    if (lastMessage.audio) return "Audio";
+    return "New message";
+  };
+
+  const handleSelectConversation = (conversation) => {
+    setActive(conversation);
+    setError("");
+  };
+
+  const updateIsMobile = () => {
+    setIsMobile(window.innerWidth < 768);
+  };
+
   const cleanupMediaPreview = () => {
     if (mediaPreview) {
       URL.revokeObjectURL(mediaPreview);
@@ -79,8 +106,8 @@ export default function MessagesPage() {
     const type = file.type.startsWith("image/")
       ? "image"
       : file.type.startsWith("audio/")
-      ? "audio"
-      : "";
+        ? "audio"
+        : "";
 
     if (!type) return;
 
@@ -129,7 +156,10 @@ export default function MessagesPage() {
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state === "recording"
+    ) {
       mediaRecorderRef.current.stop();
     }
   };
@@ -153,9 +183,6 @@ export default function MessagesPage() {
       const { data } = await api.get("/chats/conversations");
       const conversations = dedupeConversations(data.conversations || []);
       setConversations(conversations);
-      if (!friendId) {
-        setActive(conversations?.[0] || null);
-      }
     } catch (err) {
       setError(err?.response?.data?.message || "Unable to load conversations.");
     } finally {
@@ -206,6 +233,12 @@ export default function MessagesPage() {
   }, []);
 
   useEffect(() => {
+    updateIsMobile();
+    window.addEventListener("resize", updateIsMobile);
+    return () => window.removeEventListener("resize", updateIsMobile);
+  }, []);
+
+  useEffect(() => {
     if (!friendId) return;
     openConversationForFriend(friendId);
   }, [friendId]);
@@ -220,15 +253,24 @@ export default function MessagesPage() {
     });
   };
 
+  const sortConversations = (list) =>
+    [...list].sort(
+      (a, b) =>
+        new Date(b.lastMessageAt || b.createdAt) -
+        new Date(a.lastMessageAt || a.createdAt),
+    );
+
   const updateConversationMeta = (conversationId, update) => {
     setConversations((current) =>
-      current.map((conversation) =>
-        String(conversation._id) !== String(conversationId)
-          ? conversation
-          : {
-              ...conversation,
-              ...update,
-            },
+      sortConversations(
+        current.map((conversation) =>
+          String(conversation._id) !== String(conversationId)
+            ? conversation
+            : {
+                ...conversation,
+                ...update,
+              },
+        ),
       ),
     );
   };
@@ -240,7 +282,9 @@ export default function MessagesPage() {
       (entry) => String(entry.user) === String(otherUser._id),
     );
     if (!seenEntry) return null;
-    const seenAt = seenEntry.seenAt ? new Date(seenEntry.seenAt).toLocaleTimeString() : null;
+    const seenAt = seenEntry.seenAt
+      ? new Date(seenEntry.seenAt).toLocaleTimeString()
+      : null;
     return seenAt ? `Seen ${seenAt}` : "Seen";
   };
 
@@ -515,15 +559,21 @@ export default function MessagesPage() {
 
     const handleMessage = (message) => {
       if (!message?._id) return;
-      const conversationId = String(message.conversation || message.conversation?._id);
+      const conversationId = String(
+        message.conversation || message.conversation?._id,
+      );
       const isMine =
         String(message.sender?._id || message.sender) === String(user._id);
 
-      if (activeRef.current && String(activeRef.current._id) === conversationId) {
+      if (
+        activeRef.current &&
+        String(activeRef.current._id) === conversationId
+      ) {
         addMessage(message);
         updateConversationMeta(conversationId, {
           lastMessage: message,
           lastMessageAt: message.createdAt,
+          unreadCount: 0,
         });
         if (!isMine) {
           playIncomingMessageSound();
@@ -533,9 +583,9 @@ export default function MessagesPage() {
       }
 
       updateConversationMeta(conversationId, {
-        unreadCount: (activeRef.current && String(activeRef.current._id) === conversationId
-          ? 0
-          : (conversations.find((conv) => String(conv._id) === conversationId)?.unreadCount || 0) + (isMine ? 0 : 1)),
+        unreadCount:
+          (conversations.find((conv) => String(conv._id) === conversationId)
+            ?.unreadCount || 0) + (isMine ? 0 : 1),
         lastMessage: message,
         lastMessageAt: message.createdAt,
       });
@@ -567,7 +617,13 @@ export default function MessagesPage() {
       setTypingParticipant("");
     };
 
-    const handleCallIncoming = ({ conversationId, offer, isVideo, callerId, callerName }) => {
+    const handleCallIncoming = ({
+      conversationId,
+      offer,
+      isVideo,
+      callerId,
+      callerName,
+    }) => {
       if (!conversationId || !offer || !callerId) return;
       setIncomingCall({ conversationId, offer, isVideo, callerId, callerName });
       setCallState("ringing");
@@ -603,15 +659,23 @@ export default function MessagesPage() {
     };
 
     const handleMessageRead = ({ conversationId, userId }) => {
-      if (!activeRef.current || String(activeRef.current._id) !== String(conversationId)) {
+      if (
+        !activeRef.current ||
+        String(activeRef.current._id) !== String(conversationId)
+      ) {
+        updateConversationMeta(conversationId, { unreadCount: 0 });
         return;
       }
+      updateConversationMeta(conversationId, { unreadCount: 0 });
       setMessages((current) =>
         current.map((message) => {
-          const isMine = String(message.sender?._id || message.sender) === String(user._id);
+          const isMine =
+            String(message.sender?._id || message.sender) === String(user._id);
           if (!isMine) return message;
           const hasSeen = Array.isArray(message.seenBy)
-            ? message.seenBy.some((entry) => String(entry.user) === String(userId))
+            ? message.seenBy.some(
+                (entry) => String(entry.user) === String(userId),
+              )
             : false;
 
           if (hasSeen) return message;
@@ -953,10 +1017,14 @@ export default function MessagesPage() {
             <div className="flex items-center justify-between border-b border-slate-800 p-4">
               <div>
                 <p className="text-sm uppercase tracking-[0.18em] text-slate-400">
-                  {callState === "ringing" ? "Incoming call" : "Call in progress"}
+                  {callState === "ringing"
+                    ? "Incoming call"
+                    : "Call in progress"}
                 </p>
                 <p className="text-lg font-semibold">
-                  {incomingCall ? incomingCall.callerName : otherParticipant(active)?.name}
+                  {incomingCall
+                    ? incomingCall.callerName
+                    : otherParticipant(active)?.name}
                 </p>
               </div>
               <button
