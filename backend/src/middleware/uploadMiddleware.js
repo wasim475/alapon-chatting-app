@@ -4,15 +4,19 @@ import { AppError } from "../utils/AppError.js";
 const storage = multer.memoryStorage();
 
 const fileFilter = (_req, file, cb) => {
-  if (file.mimetype.startsWith("image/")) {
+  const isImage = file.mimetype.startsWith("image/");
+  const isAudio = file.mimetype.startsWith("audio/");
+
+  if (isImage || isAudio) {
     cb(null, true);
-  } else {
-    cb(new AppError("Only image uploads are allowed", 400), false);
+    return;
   }
+
+  cb(new AppError("Only image and audio uploads are allowed", 400), false);
 };
 
 export const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }
+  limits: { fileSize: 12 * 1024 * 1024 },
 });

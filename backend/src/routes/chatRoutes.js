@@ -4,7 +4,7 @@ import {
   listConversations,
   listMessages,
   markConversationRead,
-  sendMessage
+  sendMessage,
 } from "../controllers/chatController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/uploadMiddleware.js";
@@ -18,7 +18,7 @@ router.get("/conversations/:conversationId/messages", listMessages);
 router.patch("/conversations/:conversationId/read", markConversationRead);
 router.post(
   "/conversations/:conversationId/messages",
-  upload.single("image"),
+  upload.single("media"),
   sendMessage,
 );
 

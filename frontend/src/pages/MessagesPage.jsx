@@ -36,6 +36,12 @@ export default function MessagesPage() {
   const [remoteStream, setRemoteStream] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
   const [cameraOn, setCameraOn] = useState(true);
+  const [mediaFile, setMediaFile] = useState(null);
+  const [mediaPreview, setMediaPreview] = useState(null);
+  const [mediaType, setMediaType] = useState("");
+  const [mediaUploading, setMediaUploading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingError, setRecordingError] = useState("");
   const endRef = useRef(null);
   const activeRef = useRef(active);
   const peerConnectionRef = useRef(null);
@@ -43,11 +49,101 @@ export default function MessagesPage() {
   const typingTimeoutRef = useRef(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const audioInputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
 
   const otherParticipant = (conversation) =>
     conversation?.participants?.find(
-      (participant) => participant._id !== user._id,
+      (participant) => String(participant._id) !== String(user._id),
     );
+
+  const cleanupMediaPreview = () => {
+    if (mediaPreview) {
+      URL.revokeObjectURL(mediaPreview);
+    }
+  };
+
+  const clearMedia = () => {
+    cleanupMediaPreview();
+    setMediaFile(null);
+    setMediaPreview(null);
+    setMediaType("");
+    setRecordingError("");
+  };
+
+  const handleMediaChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const type = file.type.startsWith("image/")
+      ? "image"
+      : file.type.startsWith("audio/")
+      ? "audio"
+      : "";
+
+    if (!type) return;
+
+    cleanupMediaPreview();
+    setMediaFile(file);
+    setMediaType(type);
+    setMediaPreview(URL.createObjectURL(file));
+  };
+
+  const startRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setRecordingError("Audio recording is not supported in this browser.");
+      return;
+    }
+
+    setRecordingError("");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const recordedChunks = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: "audio/webm" });
+        const file = new File([blob], "recording.webm", { type: "audio/webm" });
+        cleanupMediaPreview();
+        setMediaFile(file);
+        setMediaType("audio");
+        setMediaPreview(URL.createObjectURL(blob));
+        setIsRecording(false);
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+    } catch (err) {
+      setRecordingError("Unable to access microphone.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const dedupeConversations = (conversationList) => {
+    const seen = new Set();
+    return conversationList.filter((conversation) => {
+      const other = otherParticipant(conversation);
+      const otherId = String(other?._id);
+      if (!otherId || seen.has(otherId)) return false;
+      seen.add(otherId);
+      return true;
+    });
+  };
 
   const loadConversations = async () => {
     setLoadingConversations(true);
@@ -55,9 +151,10 @@ export default function MessagesPage() {
 
     try {
       const { data } = await api.get("/chats/conversations");
-      setConversations(data.conversations || []);
+      const conversations = dedupeConversations(data.conversations || []);
+      setConversations(conversations);
       if (!friendId) {
-        setActive(data.conversations?.[0] || null);
+        setActive(conversations?.[0] || null);
       }
     } catch (err) {
       setError(err?.response?.data?.message || "Unable to load conversations.");
@@ -521,27 +618,45 @@ export default function MessagesPage() {
 
   const send = async (event) => {
     event.preventDefault();
-    if (!text.trim() || !active?._id) return;
+    if ((!text.trim() && !mediaFile) || !active?._id) return;
 
     stopTyping();
+    setMediaUploading(true);
+    setError("");
 
     try {
+      const formData = new FormData();
+      if (text.trim()) formData.append("text", text.trim());
+      if (mediaFile) formData.append("media", mediaFile);
+
       const { data } = await api.post(
         `/chats/conversations/${active._id}/messages`,
-        {
-          text,
-        },
+        formData,
       );
+
       addMessage(data.message);
       updateConversationMeta(active._id, {
         lastMessage: data.message,
         lastMessageAt: data.message.createdAt,
       });
       setText("");
+      clearMedia();
     } catch (err) {
       setError(err?.response?.data?.message || "Unable to send message.");
+    } finally {
+      setMediaUploading(false);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      stopTyping();
+      endCall(false);
+      clearTimeout(typingTimeoutRef.current);
+      stopRecording();
+      clearMedia();
+    };
+  }, []);
 
   return (
     <div className="grid min-h-[calc(100vh-7.5rem)] overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 md:grid-cols-[280px_1fr]">
@@ -660,7 +775,25 @@ export default function MessagesPage() {
                             : "bg-slate-100 dark:bg-slate-800"
                         }`}
                       >
-                        {message.text}
+                        {message.text && (
+                          <p className="mb-2 whitespace-pre-wrap">
+                            {message.text}
+                          </p>
+                        )}
+                        {message.image?.url && (
+                          <img
+                            src={message.image.url}
+                            alt="Message attachment"
+                            className="mb-2 max-h-80 w-full rounded-xl object-cover"
+                          />
+                        )}
+                        {message.audio?.url && (
+                          <audio
+                            controls
+                            src={message.audio.url}
+                            className="w-full"
+                          />
+                        )}
                       </div>
                     </div>
                   );
@@ -673,18 +806,95 @@ export default function MessagesPage() {
               <div ref={endRef} />
             </div>
 
+            <div className="border-t border-slate-200 px-4 pt-4 pb-2 dark:border-slate-800">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Image
+                </button>
+                <button
+                  type="button"
+                  onClick={() => audioInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Audio
+                </button>
+                <button
+                  type="button"
+                  onClick={isRecording ? stopRecording : startRecording}
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm ${
+                    isRecording
+                      ? "bg-rose-600 text-white"
+                      : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  {isRecording ? "Stop" : "Record"}
+                </button>
+                {mediaFile && (
+                  <button
+                    type="button"
+                    onClick={clearMedia}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {recordingError && (
+                <p className="mt-3 text-sm text-rose-500">{recordingError}</p>
+              )}
+
+              {mediaPreview && mediaType === "image" && (
+                <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+                  <img
+                    src={mediaPreview}
+                    alt="Image preview"
+                    className="h-48 w-full object-contain"
+                  />
+                </div>
+              )}
+
+              {mediaPreview && mediaType === "audio" && (
+                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
+                  <audio controls src={mediaPreview} className="w-full" />
+                </div>
+              )}
+            </div>
+
             <form
               onSubmit={send}
               className="flex gap-2 border-t border-slate-200 p-4 dark:border-slate-800"
             >
               <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleMediaChange}
+              />
+              <input
+                ref={audioInputRef}
+                type="file"
+                accept="audio/*"
+                className="hidden"
+                onChange={handleMediaChange}
+              />
+              <input
                 value={text}
-                onChange={(event) => setText(event.target.value)}
+                onChange={(event) => updateText(event.target.value)}
                 placeholder="Write a message"
                 className="flex-1 rounded-full bg-slate-100 px-4 py-3 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-slate-950"
               />
-              <button className="grid h-12 w-12 place-items-center rounded-full bg-brand-600 text-white">
-                <Send size={18} />
+              <button
+                type="submit"
+                disabled={mediaUploading}
+                className="grid h-12 w-12 place-items-center rounded-full bg-brand-600 text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {mediaUploading ? "…" : <Send size={18} />}
               </button>
             </form>
           </>

@@ -6,14 +6,22 @@ const conversationSchema = new mongoose.Schema(
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        required: true
-      }
+        required: true,
+      },
     ],
     lastMessage: { type: mongoose.Schema.Types.ObjectId, ref: "Message" },
-    lastMessageAt: { type: Date, default: Date.now }
+    lastMessageAt: { type: Date, default: Date.now },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
+
+conversationSchema.pre("save", function (next) {
+  if (!Array.isArray(this.participants)) return next();
+  this.participants = this.participants
+    .map((participant) => mongoose.Types.ObjectId(String(participant)))
+    .sort((a, b) => String(a).localeCompare(String(b)));
+  next();
+});
 
 conversationSchema.index({ participants: 1 });
 conversationSchema.index({ lastMessageAt: -1 });
